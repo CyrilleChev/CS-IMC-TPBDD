@@ -32,9 +32,9 @@ with pyodbc.connect('DRIVER='+driver+';SERVER=tcp:'+server+';PORT=1433;DATABASE=
 
     # Films
     exportedCount = 0
-    cursor.execute("SELECT COUNT(1) FROM TFilm")
+    cursor.execute("SELECT COUNT(1) FROM dbo.tFilm")
     totalCount = cursor.fetchval()
-    cursor.execute("SELECT idFilm, primaryTitle, startYear FROM TFilm")
+    cursor.execute("SELECT idFilm, primaryTitle, startYear FROM dbo.tFilm")
     while True:
         importData = []
         rows = cursor.fetchmany(BATCH_SIZE)
@@ -43,9 +43,7 @@ with pyodbc.connect('DRIVER='+driver+';SERVER=tcp:'+server+';PORT=1433;DATABASE=
 
         i = 0
         for row in rows:
-            # Créer un objet Node avec comme label Film et les propriétés adéquates
-            # A COMPLETER
-            importData.append(n)
+            importData.append(Node("Film", idFilm=row[0], primaryTitle=row[1], startYear=row[2]))
             i += 1
 
         try:
@@ -55,24 +53,44 @@ with pyodbc.connect('DRIVER='+driver+';SERVER=tcp:'+server+';PORT=1433;DATABASE=
         except Exception as error:
             print(error)
 
-    # Names
-    # En vous basant sur ce qui a été fait dans la section précédente, exportez les données de la table tArtist
-    # A COMPLETER
+    
+    # Artists
+    exportedCount = 0
+    cursor.execute("SELECT COUNT(1) FROM dbo.tArtist")
+    totalCount = cursor.fetchval()
+    cursor.execute("SELECT idArtist, primaryName, birthYear FROM dbo.tArtist")
+    while True:
+        importData = []
+        rows = cursor.fetchmany(BATCH_SIZE)
+        if not rows:
+            break
+
+        i = 0
+        for row in rows:
+            importData.append(Node("Artist", idArtist=row[0], primaryName=row[1], birthYear=row[2]))
+            i += 1
+
+        try:
+            create_nodes(graph.auto(), importData, labels={"Artist"})
+            exportedCount += len(rows)
+            print(f"{exportedCount}/{totalCount} artists records exported to Neo4j")
+        except Exception as error:
+            print(error)
 
     try:
         print("Indexing Film nodes...")
-        graph.run("CREATE INDEX ON :Film(idFilm)")
+        graph.run("CREATE INDEX film_id_index IF NOT EXISTS FOR (f:Film) ON (f.idFilm);")
         print("Indexing Name (Artist) nodes...")
-        graph.run("CREATE INDEX ON :Artist(idArtist)")
+        graph.run("CREATE INDEX artist_id_index IF NOT EXISTS FOR (a:Artist) ON (a.idArtist);")
     except Exception as error:
         print(error)
 
 
     # Relationships
     exportedCount = 0
-    cursor.execute("SELECT COUNT(1) FROM tJob")
+    cursor.execute("SELECT COUNT(1) FROM dbo.tJob")
     totalCount = cursor.fetchval()
-    cursor.execute(f"SELECT idArtist, category, idFilm FROM tJob")
+    cursor.execute(f"SELECT idArtist, category, idFilm FROM dbo.tJob")
     while True:
         importData = { "acted in": [], "directed": [], "produced": [], "composed": [] }
         rows = cursor.fetchmany(BATCH_SIZE)
@@ -85,12 +103,13 @@ with pyodbc.connect('DRIVER='+driver+';SERVER=tcp:'+server+';PORT=1433;DATABASE=
 
         try:
             for cat in importData:
-                # Utilisez la fonction create_relationships de py2neo pour créer les relations entre les noeuds Film et Name
-                # (les tuples nécessaires ont déjà été créés ci-dessus dans la boucle for précédente)
-                # https://py2neo.org/2021.1/bulk/index.html
-                # ATTENTION: remplacez les espaces par des _ pour nommer les types de relation
-                # A COMPLETER
-                None # Remplacez None par votre code
+                create_relationships(
+                    graph.auto(),
+                    importData[cat],
+                    cat.upper().replace(" ", "_"),
+                    ("Artist", "idArtist"),
+                    ("Film", "idFilm")
+                )
             exportedCount += len(rows)
             print(f"{exportedCount}/{totalCount} relationships exported to Neo4j")
         except Exception as error:
